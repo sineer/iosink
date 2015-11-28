@@ -1,0 +1,79 @@
+#!/bin/sh -x
+
+ZREP=/usr/local/sbin/zrep
+SSH='ssh -p 295'
+ZREP_R=''
+__setenv () {
+    export SSH=$SSH
+    export ZREP_R=${ZREP_R}
+}
+
+__usage  () {
+    echo "iosink usage: ..."
+}
+
+__parse_cmd () {
+    while [ $# -gt 0 ] ; do
+        case "$1" in
+            push)    __push_jail "$2" "$3" "$4"
+                     exit
+		     ;;
+            pull)    __pull_jail "$2" "$3"
+                     exit
+		     ;;
+            *)       __usage
+                     exit
+	esac
+	shift
+    done
+}
+
+__push_jail () {
+    local _src_dataset, _dst_dataset, _dst_host, _jail_child_datasets
+    
+    echo "PUSH" $1 $2 $3
+
+    _src_dataset=$1
+    _dst_dataset=$3
+    _dst_host=$2
+    _jail_child_datasets="$(zfs list -rH -o name $1 | grep -Ev "$1$|/root$")"
+    
+#    ZREP_R='-R'
+    __setenv
+
+    for _fs in $(echo ${_jail_child_datasets}) ; do
+	echo 
+	_dfs=$(echo ${_fs} | sed s#/${_src_dataset}#${_dst_dataset}#g)
+	$ZREP init ${_fs} ${_dst_host} ${_dfs} || exit $?    
+	$ZREP failover ${_fs} || exit $?
+    done
+    
+    echo "SUCCESS!"
+}
+
+__pull_jail () {
+    local _jail_child_datasets
+    
+    echo "PULL" $1 $2
+    
+    _jail_child_datasets="$(zfs list -rH -o name $1 | grep -Ev "$1$|/root$")"
+ 
+    __setenv
+
+    for _fs in $(echo ${_jail_child_datasets}) ; do
+	echo 
+	$ZREP refresh ${_fs} || exit $?
+    done
+    
+    echo "DONE."
+}
+
+
+
+##### MAIN #####
+if [ -z "$1" ] ; then
+    __usage
+    exit 0
+fi
+
+__parse_cmd "$@"
