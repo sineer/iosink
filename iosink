@@ -15,10 +15,13 @@ __usage  () {
 __parse_cmd () {
     while [ $# -gt 0 ] ; do
         case "$1" in
-            push)    __push_jail "$2" "$3" "$4"
+            deploy)  __deploy_jail "$2" "$3" "$4"
                      exit
 		     ;;
-            pull)    __pull_jail "$2" "$3"
+            pull)    __pull "$2"
+                     exit
+		     ;;
+            push)    __push "$2"
                      exit
 		     ;;
             *)       __usage
@@ -28,35 +31,62 @@ __parse_cmd () {
     done
 }
 
-__push_jail () {
+__deploy_jail () {
+    echo "<DEPLOY_JAIL>" $1 $2 $3
     local _src_dataset, _dst_dataset, _dst_host, _jail_child_datasets
-    
-    echo "PUSH" $1 $2 $3
-
     _src_dataset=$1
     _dst_dataset=$3
     _dst_host=$2
-    _jail_child_datasets="$(zfs list -rH -o name $1 | grep -Ev "$1$|/root$")"
-    
-#    ZREP_R='-R'
+    _jail_child_datasets="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
+
+    if [ -z ${_dst_host} ] ; then
+	echo "ERROR: NO HOST SPECIFIED."
+	exit 1
+    fi    
+    if [ -z ${_dst_dataset} ] ; then
+        _dst_dataset=${_src_dataset}
+	echo "WARNING: DESTINATION DATASET NOT SPECIFIED ==> SRC DATASET WILL BE USED: ${_dst_dataset}"
+    fi
+ 
     __setenv
 
+    $ZREP init ${_src_dataset} ${_dst_host} ${_dst_dataset} || exit $?
+    $ZREP failover ${_src_dataset} || exit $?
     for _fs in $(echo ${_jail_child_datasets}) ; do
-	echo 
 	_dfs=$(echo ${_fs} | sed s#/${_src_dataset}#${_dst_dataset}#g)
 	$ZREP init ${_fs} ${_dst_host} ${_dfs} || exit $?    
 	$ZREP failover ${_fs} || exit $?
     done
+
+    __copy_iocage_props_over_ssh ${_src_dataset} ${_dst_host} ${_dst_dataset}
     
     echo "SUCCESS!"
 }
 
-__pull_jail () {
-    local _jail_child_datasets
-    
-    echo "PULL" $1 $2
-    
-    _jail_child_datasets="$(zfs list -rH -o name $1 | grep -Ev "$1$|/root$")"
+__copy_iocage_props_over_ssh () {
+    echo "<COPY_ZFS_PROPS_OVER_SSH>" $1 $2 $2
+    local _src_dataset, _dst_dataset, _dst_host,_zfs_props,_zfs_rpc
+    _src_dataset=$1
+    _dst_dataset=$3
+    _dst_host=$2
+    _zfs_props="$(zfs get -H -o property,value all ${_src_dataset} | grep org.freebsd.iocage)"
+    _zfs_rpc="$(local _ifs =$IFS
+	        IFS=$'\n'
+                for _prop in ${_zfs_props}; do
+                    local _name="$(echo $_prop | awk 'BEGIN { FS = "\t" } ; { print $1 }')"
+                    local _prop="$(echo $_prop | awk 'BEGIN { FS = "\t" } ; { print $2 }')"
+ 	            echo "zfs set $_name="$_prop" ${_dst_dataset};"
+                done
+                IFS=$_ifs)"
+
+    $SSH $_dst_host $_zfs_rpc || exit $?
+}
+
+__pull () {
+    echo "<PULL>" $1 $2
+    local _src_dataset, _jail_child_datasets    
+    _src_dataset=$1
+    _jail_child_datasets="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
  
     __setenv
 
@@ -66,6 +96,11 @@ __pull_jail () {
     done
     
     echo "DONE."
+}
+
+__push () {
+    echo "<PUSH>" $1 $2 
+    echo "PUSH NOT IMPLEMENTED."
 }
 
 
