@@ -1,4 +1,4 @@
-#!/bin/sh -x
+#!/bin/sh
 
 ZREP=/usr/local/sbin/zrep
 SSH='ssh -p 295'
@@ -33,7 +33,7 @@ __parse_cmd () {
 
 __deploy_jail () {
     echo "<DEPLOY_JAIL>" $1 $2 $3
-    local _src_dataset, _dst_dataset, _dst_host, _jail_child_datasets
+    local _src_dataset _dst_dataset _dst_host _jail_child_datasets
     _src_dataset=$1
     _dst_dataset=$3
     _dst_host=$2
@@ -67,7 +67,7 @@ __deploy_jail () {
 
 __copy_iocage_props_over_ssh () {
     echo "<COPY_ZFS_PROPS_OVER_SSH>" $1 $2 $2
-    local _src_dataset, _dst_dataset, _dst_host,_zfs_props,_zfs_rpc
+    local _src_dataset _dst_dataset _dst_host _zfs_props _zfs_rpc
     _src_dataset=$1
     _dst_dataset=$3
     _dst_host=$2
@@ -88,7 +88,7 @@ __copy_iocage_props_over_ssh () {
 
 __set_iocage_remote_hostid () {
     echo "<SET_IOCAGE_HOSTID>" $1 $2 $2
-    local _dst_host,_dst_dataset,_hostid
+    local _dst_host _dst_dataset _hostid
     _dst_host=$1
     _dst_dataset=$2
 
@@ -98,14 +98,13 @@ __set_iocage_remote_hostid () {
 }
 __pull () {
     echo "<PULL>" $1 $2
-    local _src_dataset, _jail_child_datasets    
+    local _src_dataset _jail_child_datasets    
     _src_dataset=$1
     _jail_child_datasets="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
  
     __setenv
 
     for _fs in $(echo ${_jail_child_datasets}) ; do
-	echo 
 	$ZREP refresh ${_fs} || exit $?
     done
     
