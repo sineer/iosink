@@ -59,6 +59,8 @@ __deploy_jail () {
     done
 
     __copy_iocage_props_over_ssh ${_src_dataset} ${_dst_host} ${_dst_dataset}
+
+    __set_iocage_remote_hostid ${_dst_host} ${_dst_dataset}
     
     echo "SUCCESS!"
 }
@@ -75,13 +77,27 @@ __copy_iocage_props_over_ssh () {
                 for _prop in ${_zfs_props}; do
                     local _name="$(echo $_prop | awk 'BEGIN { FS = "\t" } ; { print $1 }')"
                     local _prop="$(echo $_prop | awk 'BEGIN { FS = "\t" } ; { print $2 }')"
- 	            echo "zfs set $_name="$_prop" ${_dst_dataset};"
+ 	            echo "$_name=\"$_prop\" "
                 done
                 IFS=$_ifs)"
 
-    $SSH $_dst_host $_zfs_rpc || exit $?
+    if [ ! -z $_zfs_rpc ] ; then
+	_remote_command = "zfs set ${_zfs_rpc} ${_dst_dataset}" 
+	$SSH $_dst_host $_remote_command || exit $?
+    fi
 }
 
+__set_iocage_remote_hostid () {
+    echo "<SET_IOCAGE_HOSTID>" $1 $2 $2
+    local _dst_host,_dst_dataset,_hostid
+    _dst_host=$2
+    _dst_dataset=$3
+
+    _hostid="$($SSH $_dst_host cat /etc/hostid || exit $?)"
+
+    _remote_command="zfs set org.freebsd.iocage.hostid=${_hostid} ${_dst_dataset}"
+    $SSH $_dst_host $_remote_command || exit $?
+}
 __pull () {
     echo "<PULL>" $1 $2
     local _src_dataset, _jail_child_datasets    
