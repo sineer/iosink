@@ -58,9 +58,9 @@ __deploy_jail () {
 	$ZREP failover ${_fs} || exit $?
     done
 
-    __copy_iocage_props_over_ssh ${_src_dataset} ${_dst_host} ${_dst_dataset}
+    __copy_iocage_props_over_ssh ${_src_dataset} ${_dst_host} ${_dst_dataset} || exit $?
 
-    __set_iocage_remote_hostid ${_dst_host} ${_dst_dataset}
+    __set_iocage_remote_hostid ${_dst_host} ${_dst_dataset} || exit $?
     
     echo "SUCCESS!"
 }
@@ -81,22 +81,20 @@ __copy_iocage_props_over_ssh () {
                 done
                 IFS=$_ifs)"
 
-    if [ ! -z $_zfs_rpc ] ; then
-	_remote_command = "zfs set ${_zfs_rpc} ${_dst_dataset}" 
-	$SSH $_dst_host $_remote_command || exit $?
+    if [ ! -z "$_zfs_rpc" ] ; then
+	$SSH $_dst_host zfs set ${_zfs_rpc} ${_dst_dataset} || exit $?
     fi
 }
 
 __set_iocage_remote_hostid () {
     echo "<SET_IOCAGE_HOSTID>" $1 $2 $2
     local _dst_host,_dst_dataset,_hostid
-    _dst_host=$2
-    _dst_dataset=$3
+    _dst_host=$1
+    _dst_dataset=$2
 
     _hostid="$($SSH $_dst_host cat /etc/hostid || exit $?)"
 
-    _remote_command="zfs set org.freebsd.iocage.hostid=${_hostid} ${_dst_dataset}"
-    $SSH $_dst_host $_remote_command || exit $?
+    $SSH $_dst_host zfs set org.freebsd.iocage:hostid=${_hostid} ${_dst_dataset} || exit $?
 }
 __pull () {
     echo "<PULL>" $1 $2
