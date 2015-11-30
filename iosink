@@ -15,7 +15,10 @@ __usage  () {
 __parse_cmd () {
     while [ $# -gt 0 ] ; do
         case "$1" in
-            deploy)  __deploy_jail "$2" "$3" "$4"
+            sink)  __sink "$2" "$3"
+                     exit
+		     ;;
+            rsink)  __rsink "$2" "$3" "$4"
                      exit
 		     ;;
             pull)    __pull "$2"
@@ -31,8 +34,13 @@ __parse_cmd () {
     done
 }
 
-__deploy_jail () {
-    echo "<DEPLOY_JAIL>" $1 $2 $3
+__rsink () {
+    echo "<SINK>" $1 $2
+    # TODO: How to zrep without ssh? VS no zrep (do my own or tweak zrep..?)
+}
+
+__rsink () {
+    echo "<REMOTE SINK>" $1 $2 $3
     local _src_dataset _dst_dataset _dst_host _jail_child_datasets
     _src_dataset=$1
     _dst_dataset=$3
