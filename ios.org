@@ -1,0 +1,63 @@
+I/O SINK
+
+* IOCAGE FRIENDLY ZREP MANAGER
+  SMART ZFS POOL REMOTE ST
+
+
+** COMMANDs
+
+*** list [REMOTE|TAG]
+    List all I/O Sink(s) 
+    with associate iocage tag/uuid if any + LAST SYNC + SPACE + what else?
+
+**** -v VERBOSE
+
+*** status [PATH|REMOTE]
+
+**** -v VERBOSE    
+
+*** sink <JAIL UUID|TAG OR ZFS/POOL>
+    Sink Local JAIL OR ZPOOL.
+
+*** rsink <REMOTE> <JAIL UUID|TAG OR ZFS/POOL>
+    Sink Remote JAIL OR ZPOOL.
+
+
+*** deploy <SINK> [PATH] [REMOTE]
+
+
+*** pull <SINK>
+
+    
+*** push <SINK>
+
+
+*** info <SINK>
+    Statistics about Sink (last sync, space, snapshots?, what else??)
+
+*** check <SINK>
+    Examine Sink and report if Remote(s) can be pulled or pushed
+
+*** clone
+
+
+*** failover <SINK>
+
+*** takeover <REMOTE> <SINK>
+    
+
+*** checkout
+    "switch" branch OR if no branch but ZFS snapshot found then clone into a new branch!
+
+*** branch
+
+*** rebase
+    ZFS send -R (replication stream) | zfs recv "into current branch"
+
+    NOTE: Remotes may use it to mirror sink(s) by pulling incremental ZFS snapshots :-)
+
+*** remote
+**** remote add
+**** remote rm
+
+
