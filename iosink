@@ -47,53 +47,75 @@ __parse_cmd () {
 
 __list () {
     echo "<LIST>" $1
-    local _switch _zrep_list _format _list_type _uuid _tag _fs _pfs _is_child
+    local _switch _zlist _format _type _uuid _tag _fs _pfs _is_child
 
     _switch=$1
-    _zrep_list="$(zrep list)"
+    _sinks=$(__find)
     _format="%-4s  %-13s  %-13s  %s\n"
 
-    _list_type=""
+    _type=""
     if [ ! -z "${_switch}" -a "${_switch}" == "-j" ] ; then
-        _list_type="JAIL"
+        _type="JAIL"
     elif [ ! -z "${_switch}" -a "${_switch}" == "-b" ] ; then
-        _list_type="BASE"
+        _type="BASE"
     elif [ ! -z "${_switch}" -a "${_switch}" == "-s" ] ; then
-        _list_type="SINK"
+        _type="SINK"
+    elif [ ! -z "${_switch}" -a "${_switch}" == "-n" ] ; then
+        _type="NONE"
     elif [ ! -z "${_switch}" ] ; then
         __die "invalid switch ${_switch}"
     fi
 
     _pfs="//"
     printf "${_format}" "TYPE" "UUID" "TAG" "FS"
-    for _fs in $(echo ${_zrep_list}) ; do
-        # continue only if not within a child fs
-        _is_child=$(echo ${_fs} | grep "${_pfs}")
-        if [ -z "${_is_child}" ] ; then
+    for _fs in ${_zlist} ; do
+        _uuid=$(zfs get  -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
+        _tag=$(zfs get  -H -o value org.freebsd.iocage:tag ${_fs})
 
-            _uuid=$(zfs get  -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
-            _tag=$(zfs get  -H -o value org.freebsd.iocage:tag ${_fs})
+        # TODO: Find latest ZREP ZFS snapshot to get Last Sync date/time...
 
-            # TODO: Find latest ZREP ZFS snapshot to get Last Sync date/time...
+        if [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/base/") ]
+        || [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/sinks/") ]
+        || [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/jails/") ] ; then
 
-            if [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/base/") ] ; then
-                if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "BASE" ] ; then
+            # continue only if not within a child fs
+            _is_child=$(echo "${_fs}" | grep "${_pfs}")
+
+            if [ -z "${_is_child}" ] ; then
+                if [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "BASE" ] ; then
                     printf "${_format}" "BASE" $_uuid $_tag $_fs
-                fi
-            elif [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/sinks/") ] ; then
-                if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "SINK" ] ; then
+                elif [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "SINK" ] ; then
                     printf "${_format}" "SINK" $_uuid $_tag $_fs
-                fi
-            elif [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/jails/") ] ; then
-                if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "JAIL" ] ; then
+                elif [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "JAIL" ] ; then
                     printf "${_format}" "JAIL" $_uuid $_tag $_fs
                 fi
+                _pfs=$_fs
             fi
-            _pfs=$_fs
+
+        else
+            if [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "NONE" ] ; then
+                printf "${_format}" "ZREP" $_uuid $_tag $_fs
+            fi
         fi
     done
 
 }
+
+__find () {
+    local _name _sinks _zlist _fs
+    _name=$1
+    _sinks=""
+    _zlist="$(zrep list)"
+
+    for _fs in $(echo ${_zlist}) ; do
+
+        _sinks="${_sinks} ${_fs}"
+
+    done
+
+    echo ${_sinks}
+}
+
 
 __sink () {
     echo "<SINK>" $1 $2
@@ -102,11 +124,11 @@ __sink () {
 
 __rsink () {
     echo "<REMOTE SINK>" $1 $2 $3
-    local _src_dataset _dst_dataset _dst_host _jail_child_datasets
+    local _src_dataset _dst_dataset _dst_host _childrens
     _src_dataset=$1
     _dst_dataset=$3
     _dst_host=$2
-    _jail_child_datasets="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
+    _childrens="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
 
     if [ -z ${_dst_host} ] ; then
         echo "ERROR: NO HOST SPECIFIED."
@@ -121,7 +143,7 @@ __rsink () {
 
     $ZREP init ${_src_dataset} ${_dst_host} ${_dst_dataset} || exit $?
     $ZREP failover ${_src_dataset} || exit $?
-    for _fs in $(echo ${_jail_child_datasets}) ; do
+    for _fs in $(echo ${_childrens}) ; do
         _dfs=$(echo ${_fs} | sed s#/${_src_dataset}#${_dst_dataset}#g)
         $ZREP init ${_fs} ${_dst_host} ${_dfs} || exit $?
         $ZREP failover ${_fs} || exit $?
@@ -137,13 +159,13 @@ __rsink () {
 
 __pull () {
     echo "<PULL>" $1 $2
-    local _src_dataset _jail_child_datasets
+    local _src_dataset _childrens
     _src_dataset=$1
-    _jail_child_datasets="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
+    _childrens="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
 
     __setenv
 
-    for _fs in $(echo ${_jail_child_datasets}) ; do
+    for _fs in $(echo ${_childrens}) ; do
         $ZREP refresh ${_fs} || exit $?
     done
 
