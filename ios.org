@@ -6,13 +6,18 @@ I/O SINK
 
 ** COMMANDs
 
-*** list [REMOTE|TAG]
+*** list
     List all I/O Sink(s) 
     with associate iocage tag/uuid if any + LAST SYNC + SPACE + what else?
 
-**** -v VERBOSE
+**** -j Jail type
 
-*** status [PATH|REMOTE]
+**** -b Base type
+
+**** -s Sink type
+
+
+*** status [FS|UUID|TAG]
 
 **** -v VERBOSE    
 
@@ -26,13 +31,12 @@ I/O SINK
 *** deploy <SINK> [PATH] [REMOTE]
 
 
-*** pull <SINK>
-
+*** pull [FS|UUID|TAG]
     
-*** push <SINK>
+*** push [FS|UUID|TAG]
 
 
-*** info <SINK>
+*** info [FS|UUID|TAG]
     Statistics about Sink (last sync, space, snapshots?, what else??)
 
 *** check <SINK>

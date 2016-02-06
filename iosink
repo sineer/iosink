@@ -47,14 +47,16 @@ __parse_cmd () {
 
 __list () {
     echo "<LIST>" $1
-    local _switch _zrep_list _format _list_type _uuid _tag
+    local _switch _zrep_list _format _list_type _uuid _tag _fs _pfs _is_child
 
     _switch=$1
     _zrep_list="$(zrep list)"
     _format="%-4s  %-13s  %-13s  %s\n"
 
     _list_type=""
-    if [ ! -z "${_switch}" -a "${_switch}" == "-b" ] ; then
+    if [ ! -z "${_switch}" -a "${_switch}" == "-j" ] ; then
+        _list_type="JAIL"
+    elif [ ! -z "${_switch}" -a "${_switch}" == "-b" ] ; then
         _list_type="BASE"
     elif [ ! -z "${_switch}" -a "${_switch}" == "-s" ] ; then
         _list_type="SINK"
@@ -62,25 +64,32 @@ __list () {
         __die "invalid switch ${_switch}"
     fi
 
+    _pfs="//"
     printf "${_format}" "TYPE" "UUID" "TAG" "FS"
     for _fs in $(echo ${_zrep_list}) ; do
-        _uuid=$(zfs get  -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
-        _tag=$(zfs get  -H -o value org.freebsd.iocage:tag ${_fs})
+        # continue only if not within a child fs
+        _is_child=$(echo ${_fs} | grep "${_pfs}")
+        if [ -z "${_is_child}" ] ; then
 
-        # TODO: Find latest ZREP ZFS snapshot to get Last Sync date/time...
+            _uuid=$(zfs get  -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
+            _tag=$(zfs get  -H -o value org.freebsd.iocage:tag ${_fs})
 
-        if [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/base/") ] ; then
-            if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "BASE" ] ; then
-                printf "${_format}" "BASE" $_uuid $_tag $_fs
+            # TODO: Find latest ZREP ZFS snapshot to get Last Sync date/time...
+
+            if [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/base/") ] ; then
+                if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "BASE" ] ; then
+                    printf "${_format}" "BASE" $_uuid $_tag $_fs
+                fi
+            elif [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/sinks/") ] ; then
+                if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "SINK" ] ; then
+                    printf "${_format}" "SINK" $_uuid $_tag $_fs
+                fi
+            elif [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/jails/") ] ; then
+                if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "JAIL" ] ; then
+                    printf "${_format}" "JAIL" $_uuid $_tag $_fs
+                fi
             fi
-        elif [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/sinks/") ] ; then
-            if [ -z "${_list_type}" ] || [ ! -z "${_list_type}" -a "${_list_type}" == "SINK" ] ; then
-                printf "${_format}" "SINK" $_uuid $_tag $_fs
-            fi
-        elif [ ! -z $(echo ${_fs} | grep "${iocroot}" | grep "/jails/") ] ; then
-            if [ -z "${_list_type}" ] ; then
-                printf "${_format}" "JAIL" $_uuid $_tag $_fs
-            fi
+            _pfs=$_fs
         fi
     done
 
