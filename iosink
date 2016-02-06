@@ -112,8 +112,9 @@ __list () {
         __die "invalid switch ${_switch}"
     fi
 
-    _format=" %-4s   %-13s   %-13s   %-21s   %-3s   %s\n"
-    printf "<${_format}" "TYPE>" "<UUID>" "<TAG>" "<LAST SYNC>" "<#>" "<FS>"
+    _format="%-5s  %-13s  %-13s  %-11s %-6s  %-6s %-3s  %s\n"
+    printf "<${_format}" "TYPE>" "<UUID>" "<TAG>" "<LAST SYNC>" "<SIZE>" "<RAT>" "<#>" "<FS>"
+    _format="%-5s  %-13s  %-13s   %-11s %-6s %-6s  %-3s %s\n"
 
     for _fs in ${_sinks} ; do
 
@@ -130,34 +131,42 @@ __list () {
         # PRINT BASE(s), JAIL(s) and SINK(s)
         if [ ${_stype} == "BASE" ] || [ ${_stype} == "JAIL" ] || [ ${_stype} == "SINK" ] ; then
 
-            # (only root fs, skip children)
+            # Select proper child FS for $_zsnap based on sink type
+            if [ ${_stype} == "BASE" ] ; then
+                _zsnap=$(zfs list -H -o name -r -t snap ${_fs} | grep ${_fs}@zrep)
+            elif [ ${_stype} == "JAIL" ] || [ ${_stype} == "SINK" ] ; then
+                _zsnap=$(zfs list -H -o name -r -t snap ${_fs} | grep ${_fs}/_@zrep)
+            else
+                __die "LOGIC ERROR, INVALID TYPE: ${_stype}"
+            fi
+
+            # skip children FS
             _is_child=$(echo "${_fs}" | grep "${_pfs}")
             if [ -z "${_is_child}" ] ; then
 
                 _uuid=$(zfs get -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
                 _tag=$(zfs get -H -o value org.freebsd.iocage:tag ${_fs})
-
-                # Find latest ZREP ZFS snapshot to get Last Sync date/time.
-                _zsnap=$(zfs list -H -o name -t snap | grep ${_fs}@zrep)
                 _zlast=$(echo ${_zsnap} | grep -oE '[^ ]+$')
                 _zcnt="$(echo ${_zsnap} | wc -w)"
+                _zsize=$(zfs get -H -o value logicalreferenced ${_zlast})
+                _zratio=$(zfs get -H -o value compressratio ${_zlast})
                 _ztime=$(zfs get -H -o value creation ${_zlast})
-                _ztime="$(echo ${_ztime} | sed s#[:space:]#-#g)"
+                _ztime=$(date -j -f "%a %b %d %H:%M %Y" "${_ztime}" "+%Y-%m-%d")
 
                 if [ ${_stype} == "BASE" ] ; then
                     ## BASE ##
                     if [ -z "${_type}" ] || [ "${_type}" == "BASE" ] ; then
-                        printf "${_format}" "BASE" $_uuid $_tag $_ztime $_zcnt $_fs
+                        printf " ${_format}" "BASE" $_uuid $_tag $_ztime $_zsize $_zratio $_zcnt $_fs
                     fi
                 elif [ ${_stype} == "JAIL" ] ; then
                     ## JAIL ##
                     if [ -z "${_type}" ] || [ "${_type}" == "JAIL" ] ; then
-                        printf "${_format}" "JAIL" $_uuid $_tag $_ztime $_zcnt $_fs
+                        printf " ${_format}" "JAIL" $_uuid $_tag $_ztime $_zsize $_zratio $_zcnt $_fs
                     fi
                 elif [ ${_stype} == "SINK" ] ; then
                     ## SINK ##
                     if [ -z "${_type}" ] || [ "${_type}" == "SINK" ] ; then
-                        printf "${_format}" "SINK" $_uuid $_tag $_ztime $_zcnt $_fs
+                        printf " ${_format}" "SINK" $_uuid $_tag $_ztime $_zsize $_zratio $_zcnt $_fs
                     fi
                 else
                     __die "LOGIC ERROR, INVALID TYPE: ${_stype}"
@@ -167,7 +176,7 @@ __list () {
 
         else
             if [ -z "${_type}" ] || [ "${_type}" == "NONE" ] ; then
-                printf "${_format}" "ZREP" $_uuid $_tag $_fs
+                printf " ${_format}" "ZREP" $_uuid $_tag $_fs
             fi
         fi
     done
