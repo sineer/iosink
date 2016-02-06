@@ -89,7 +89,8 @@ __find () {
 }
 
 __list () {
-    local _switch _sinks _format _type _stype _uuid _tag _fs _pfs _is_child
+    local _switch _sinks _format _type _stype _uuid _tag \
+          _fs _pfs _is_child _zsnap _zcnt _zlast _ztime
 
     _pfs="//"
     _type=""
@@ -111,8 +112,8 @@ __list () {
         __die "invalid switch ${_switch}"
     fi
 
-    _format=" %-4s   %-13s   %-13s   %s\n"
-    echo "<TYPE>   <UUID>          <TAG>           <FS>"
+    _format=" %-4s   %-13s   %-13s   %-21s   %-3s   %s\n"
+    printf "<${_format}" "TYPE>" "<UUID>" "<TAG>" "<LAST SYNC>" "<#>" "<FS>"
 
     for _fs in ${_sinks} ; do
 
@@ -133,25 +134,30 @@ __list () {
             _is_child=$(echo "${_fs}" | grep "${_pfs}")
             if [ -z "${_is_child}" ] ; then
 
-                _uuid=$(zfs get  -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
-                _tag=$(zfs get  -H -o value org.freebsd.iocage:tag ${_fs})
+                _uuid=$(zfs get -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
+                _tag=$(zfs get -H -o value org.freebsd.iocage:tag ${_fs})
 
-                # TODO: Find latest ZREP ZFS snapshot to get Last Sync date/time...
+                # Find latest ZREP ZFS snapshot to get Last Sync date/time.
+                _zsnap=$(zfs list -H -o name -t snap | grep ${_fs}@zrep)
+                _zlast=$(echo ${_zsnap} | grep -oE '[^ ]+$')
+                _zcnt="$(echo ${_zsnap} | wc -w)"
+                _ztime=$(zfs get -H -o value creation ${_zlast})
+                _ztime="$(echo ${_ztime} | sed s#[:space:]#-#g)"
 
                 if [ ${_stype} == "BASE" ] ; then
                     ## BASE ##
                     if [ -z "${_type}" ] || [ "${_type}" == "BASE" ] ; then
-                        printf "${_format}" "BASE" $_uuid $_tag $_fs
+                        printf "${_format}" "BASE" $_uuid $_tag $_ztime $_zcnt $_fs
                     fi
                 elif [ ${_stype} == "JAIL" ] ; then
                     ## JAIL ##
                     if [ -z "${_type}" ] || [ "${_type}" == "JAIL" ] ; then
-                        printf "${_format}" "JAIL" $_uuid $_tag $_fs
+                        printf "${_format}" "JAIL" $_uuid $_tag $_ztime $_zcnt $_fs
                     fi
                 elif [ ${_stype} == "SINK" ] ; then
                     ## SINK ##
                     if [ -z "${_type}" ] || [ "${_type}" == "SINK" ] ; then
-                        printf "${_format}" "SINK" $_uuid $_tag $_fs
+                        printf "${_format}" "SINK" $_uuid $_tag $_ztime $_zcnt $_fs
                     fi
                 else
                     __die "LOGIC ERROR, INVALID TYPE: ${_stype}"
@@ -175,7 +181,7 @@ __info () {
 
     _name=$1
     _sink=$(__find ${_name})
-    if [ -z ${sink} ] ; then
+    if [ -z ${_sink} ] ; then
         __die "sink not found for name: ${_name}"
     fi
 
@@ -186,7 +192,7 @@ __status() {
     local _sink
 
     _sink=$(__find ${_name})
-    if [ -z ${sink} ] ; then
+    if [ -z ${_sink} ] ; then
         __die "sink not found for name: ${_name}"
     fi
 
