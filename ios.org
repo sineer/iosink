@@ -16,6 +16,8 @@ I/O SINK
 
 **** -s Sink type
 
+**** -n NO type (all others ZREP FS with children)
+
 
 *** status [FS|UUID|TAG]
 

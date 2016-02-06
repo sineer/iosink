@@ -22,38 +22,83 @@ __usage  () {
 __parse_cmd () {
     while [ $# -gt 0 ] ; do
         case "$1" in
-            list)  __list "$2"
-                   exit
-                   ;;
-            sink)  __sink "$2" "$3"
-                   exit
-                   ;;
-            rsink) __rsink "$2" "$3" "$4"
-                   exit
-                   ;;
-            pull)  __pull "$2"
-                   exit
-                   ;;
-            push)  __push "$2"
-                   exit
-                   ;;
-            *)     __usage
-                   exit
+            list)   __list "$2"
+                    exit
+                    ;;
+            info)   __info "$2" "$3"
+                    exit
+                    ;;
+            status) __status "$2" "$3"
+                    exit
+                    ;;
+            sink)   __sink "$2" "$3"
+                    exit
+                    ;;
+            rsink)  __rsink "$2" "$3" "$4"
+                    exit
+                    ;;
+            pull)   __pull "$2"
+                    exit
+                    ;;
+            push)   __push "$2"
+                    exit
+                    ;;
+            *)      __usage
+                    exit
         esac
         shift
     done
 }
 
 
-__list () {
-    echo "<LIST>" $1
-    local _switch _zlist _format _type _uuid _tag _fs _pfs _is_child
+__find () {
+    local _name _sinks _slist _zlist _fs _tag _found
+    _name=$1
+    _sinks=""
+    _slist=""
+    _zlist="$(zrep list)"
 
+    for _fs in $(echo ${_zlist}) ; do
+        _sinks="${_sinks} ${_fs}"
+    done
+
+    if [ -z ${_name} ] ; then
+        # ALL SINK(s)
+        echo ${_sinks}
+    else
+        for _sink in $(echo ${_sinks}) ; do
+            _found="$(echo ${_sink} | grep -iE "*./${_name}")"
+            _tag="$(zfs get -H -o value org.freebsd.iocage:tag ${_sink})"
+
+            if [ "${_tag}" == "${_name}" ] ; then
+                _slist="${_sink}"
+                break
+            elif [ "${#_found}" -gt 0 ] ; then
+                _slist="${_slist} ${_sink}"
+            fi
+        done
+        if [ "$(echo ${_slist}|wc -w)" -eq "1" ] ; then
+            echo "${_slist}"
+        elif [ "$(echo ${_slist}|wc -w)" -gt "1" ] ; then
+            __die "multiple sinks matching name: $_name"
+        else
+            # NO SINK
+            echo ""
+        fi
+    fi
+}
+
+__list () {
+    local _switch _sinks _format _type _stype _uuid _tag _fs _pfs _is_child
+
+    _pfs="//"
+    _type=""
     _switch=$1
     _sinks=$(__find)
-    _format="%-4s  %-13s  %-13s  %s\n"
 
-    _type=""
+    if [ -z "${_sinks}" ] ; then
+        __die "NO SINK!"
+    fi
     if [ ! -z "${_switch}" -a "${_switch}" == "-j" ] ; then
         _type="JAIL"
     elif [ ! -z "${_switch}" -a "${_switch}" == "-b" ] ; then
@@ -66,34 +111,56 @@ __list () {
         __die "invalid switch ${_switch}"
     fi
 
-    _pfs="//"
-    printf "${_format}" "TYPE" "UUID" "TAG" "FS"
-    for _fs in ${_zlist} ; do
-        _uuid=$(zfs get  -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
-        _tag=$(zfs get  -H -o value org.freebsd.iocage:tag ${_fs})
+    _format=" %-4s   %-13s   %-13s   %s\n"
+    echo "<TYPE>   <UUID>          <TAG>           <FS>"
 
-        # TODO: Find latest ZREP ZFS snapshot to get Last Sync date/time...
+    for _fs in ${_sinks} ; do
 
-        if [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/base/") ]
-        || [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/sinks/") ]
-        || [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/jails/") ] ; then
+        if [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/base/") ] ; then
+            _stype="BASE"
+        elif [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/jails/") ] ; then
+            _stype="JAIL"
+        elif [ ! -z $(echo "${_fs}" | grep "${iocroot}" | grep "/sinks/") ] ; then
+            _stype="SINK"
+        else
+            _stype="NONE"
+        fi
 
-            # continue only if not within a child fs
+        # PRINT BASE(s), JAIL(s) and SINK(s)
+        if [ ${_stype} == "BASE" ] || [ ${_stype} == "JAIL" ] || [ ${_stype} == "SINK" ] ; then
+
+            # (only root fs, skip children)
             _is_child=$(echo "${_fs}" | grep "${_pfs}")
-
             if [ -z "${_is_child}" ] ; then
-                if [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "BASE" ] ; then
-                    printf "${_format}" "BASE" $_uuid $_tag $_fs
-                elif [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "SINK" ] ; then
-                    printf "${_format}" "SINK" $_uuid $_tag $_fs
-                elif [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "JAIL" ] ; then
-                    printf "${_format}" "JAIL" $_uuid $_tag $_fs
+
+                _uuid=$(zfs get  -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
+                _tag=$(zfs get  -H -o value org.freebsd.iocage:tag ${_fs})
+
+                # TODO: Find latest ZREP ZFS snapshot to get Last Sync date/time...
+
+                if [ ${_stype} == "BASE" ] ; then
+                    ## BASE ##
+                    if [ -z "${_type}" ] || [ "${_type}" == "BASE" ] ; then
+                        printf "${_format}" "BASE" $_uuid $_tag $_fs
+                    fi
+                elif [ ${_stype} == "JAIL" ] ; then
+                    ## JAIL ##
+                    if [ -z "${_type}" ] || [ "${_type}" == "JAIL" ] ; then
+                        printf "${_format}" "JAIL" $_uuid $_tag $_fs
+                    fi
+                elif [ ${_stype} == "SINK" ] ; then
+                    ## SINK ##
+                    if [ -z "${_type}" ] || [ "${_type}" == "SINK" ] ; then
+                        printf "${_format}" "SINK" $_uuid $_tag $_fs
+                    fi
+                else
+                    __die "LOGIC ERROR, INVALID TYPE: ${_stype}"
                 fi
                 _pfs=$_fs
             fi
 
         else
-            if [ -z "${_type}" ] || [ ! -z "${_type}" -a "${_type}" == "NONE" ] ; then
+            if [ -z "${_type}" ] || [ "${_type}" == "NONE" ] ; then
                 printf "${_format}" "ZREP" $_uuid $_tag $_fs
             fi
         fi
@@ -101,25 +168,35 @@ __list () {
 
 }
 
-__find () {
-    local _name _sinks _zlist _fs
+
+__info () {
+    echo "<INFO>" $1 $2
+    local _sink _name
+
     _name=$1
-    _sinks=""
-    _zlist="$(zrep list)"
+    _sink=$(__find ${_name})
+    if [ -z ${sink} ] ; then
+        __die "sink not found for name: ${_name}"
+    fi
 
-    for _fs in $(echo ${_zlist}) ; do
+}
 
-        _sinks="${_sinks} ${_fs}"
+__status() {
+    echo "<STATUS>" $1 $2
+    local _sink
 
-    done
+    _sink=$(__find ${_name})
+    if [ -z ${sink} ] ; then
+        __die "sink not found for name: ${_name}"
+    fi
 
-    echo ${_sinks}
 }
 
 
 __sink () {
     echo "<SINK>" $1 $2
     # TODO: How to zrep without ssh? VS no zrep (do my own or tweak zrep..?)
+    __die "LOCAL SINK NOT YET IMPLEMENTED"
 }
 
 __rsink () {
@@ -174,7 +251,7 @@ __pull () {
 
 __push () {
     echo "<PUSH>" $1 $2
-    echo "PUSH NOT IMPLEMENTED."
+    __die "PUSH NOT YET IMPLEMENTED"
 }
 
 
@@ -212,24 +289,13 @@ __set_iocage_remote_hostid () {
 }
 
 
-# Log error to stderr
-__error () {
-    echo "  ERROR: $@" >&2
-}
-
-# Log error to stderr and exit
 __die () {
     echo "  ERROR: $@" >&2
     exit 1
 }
 
-# Log info to stdout
-__info () {
-    echo "  INFO: $@"
-}
 
-
-##### MAIN #####
+### MAIN ###
 if [ -z "$1" ] ; then
     __usage
     exit 0
