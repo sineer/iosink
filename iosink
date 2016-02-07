@@ -3,6 +3,11 @@
 ###
 ### I/O SINK
 ###
+### The iocage friendly ZFS replication manager.
+###
+### https://github.com/sineer/iosink
+###
+### Copyright Sineer 2015-2016
 
 iocroot="tank/ioc"
 ZREP=/usr/local/sbin/zrep
@@ -16,6 +21,7 @@ __setenv () {
 
 
 __usage  () {
+    # TODO:
     echo "iosink usage: ..."
 }
 
@@ -140,7 +146,7 @@ __list () {
                 __die "LOGIC ERROR, INVALID TYPE: ${_stype}"
             fi
 
-            # skip children FS
+            # skip child FS
             _is_child=$(echo "${_fs}" | grep "${_pfs}")
             if [ -z "${_is_child}" ] ; then
 
@@ -175,8 +181,20 @@ __list () {
             fi
 
         else
+            # Print all ZREP root and child FS
             if [ -z "${_type}" ] || [ "${_type}" == "NONE" ] ; then
-                printf " ${_format}" "ZREP" $_uuid $_tag $_fs
+
+                _uuid=$(zfs get -H -o value org.freebsd.iocage:host_hostuuid ${_fs})
+                _tag=$(zfs get -H -o value org.freebsd.iocage:tag ${_fs})
+                _zsnap=$(zfs list -H -o name -r -t snap ${_fs} | grep ${_fs}@zrep)
+                _zlast=$(echo ${_zsnap} | grep -oE '[^ ]+$')
+                _zcnt="$(echo ${_zsnap} | wc -w)"
+                _zsize=$(zfs get -H -o value logicalreferenced ${_zlast})
+                _zratio=$(zfs get -H -o value compressratio ${_zlast})
+                _ztime=$(zfs get -H -o value creation ${_zlast})
+                _ztime=$(date -j -f "%a %b %d %H:%M %Y" "${_ztime}" "+%Y-%m-%d")
+
+                printf " ${_format}" "ZREP" $_uuid $_tag $_ztime $_zsize $_zratio $_zcnt $_fs
             fi
         fi
     done
