@@ -40,18 +40,18 @@ Statistics about Sink (last sync, space, snapshots?, what else??)
 *** clone <FS|UUID|TAG> [PATH]
 
 
-*** sink <JAIL UUID|TAG OR ZFS/POOL> [ZTAG]
+*** sink <JAIL UUID|TAG OR ZFS-FS> [ZTAG]
 Sink Local JAIL OR ZPOOL.
 
 **** TODO Multiple Sinks suppport
 Optional ZTAG parameter is to set a "ZREPTAG" for Multiple Sinks support.
 http://www.bolthole.com/solaris/zrep/zrep.documentation.html#multi
 
-*** rsink <REMOTE> <JAIL FS|UUID|TAG> [PATH]
-Sink Remote JAIL or ZFS FS by creating a local Sink.
+*** rsink <JAIL UUID|TAG OR ZFS-FS> <REMOTE> [PATH]
+Clone source Jail or ZFS File System to Remote then Create local Sink for Remote.
 
 
-*** failover <REMOTE> <SINK> [PATH]
+*** failover <SINK> <REMOTE> [PATH]
 (re)Clone Sink and set its origin to new remote.
 
 The destination FS(s) on remote must not exist unless -f (force) option is used.

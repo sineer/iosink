@@ -29,29 +29,35 @@ __usage  () {
 __parse_cmd () {
     while [ $# -gt 0 ] ; do
         case "$1" in
-            list)   __list "$2"
-                    exit
-                    ;;
-            info)   __info "$2" "$3"
-                    exit
-                    ;;
-            status) __status "$2" "$3"
-                    exit
-                    ;;
-            sink)   __sink "$2" "$3"
-                    exit
-                    ;;
-            rsink)  __rsink "$2" "$3" "$4"
-                    exit
-                    ;;
-            pull)   __pull "$2"
-                    exit
-                    ;;
-            push)   __push "$2"
-                    exit
-                    ;;
-            *)      __usage
-                    exit
+            list)     __list "$2"
+                      exit
+                      ;;
+            info)     __info "$2" "$3"
+                      exit
+                      ;;
+            status)   __status "$2" "$3"
+                      exit
+                      ;;
+            sink)     __sink "$2" "$3"
+                      exit
+                      ;;
+            rsink)    __rsink "$2" "$3" "$4"
+                      exit
+                      ;;
+            failover) __failover "$2" "$3" "$4" "$5"
+                      exit
+                      ;;
+            takeover) __takeover "$2" "$3" "$4"
+                      exit
+                      ;;
+            pull)     __pull "$2"
+                      exit
+                      ;;
+            push)     __push "$2"
+                      exit
+                      ;;
+            *)        __usage
+                      exit
         esac
         shift
     done
@@ -59,7 +65,7 @@ __parse_cmd () {
 
 
 __find () {
-    local _name _sinks _slist _zlist _fs _tag _found
+    local _name _sinks _slist _zlist _fs _tag _found _pfs _is_child
     _name=$1
     _sinks=""
     _slist=""
@@ -73,15 +79,23 @@ __find () {
         # ALL SINK(s)
         echo ${_sinks}
     else
+        _pfs="//"
         for _sink in $(echo ${_sinks}) ; do
-            _found="$(echo ${_sink} | grep -iE "*./${_name}")"
-            _tag="$(zfs get -H -o value org.freebsd.iocage:tag ${_sink})"
+            # skip child FS
+            _is_child=$(echo "${_sink}" | grep "${_pfs}")
+            if [ -z "${_is_child}" ] ; then
 
-            if [ "${_tag}" == "${_name}" ] ; then
-                _slist="${_sink}"
-                break
-            elif [ "${#_found}" -gt 0 ] ; then
-                _slist="${_slist} ${_sink}"
+                _found="$(echo ${_sink} | grep -iE "*./${_name}")"
+                _tag="$(zfs get -H -o value org.freebsd.iocage:tag ${_sink})"
+
+                if [ "${_tag}" == "${_name}" ] ; then
+                    _slist="${_sink}"
+                    break
+                elif [ "${#_found}" -gt 0 ] ; then
+                    _slist="${_slist} ${_sink}"
+                fi
+
+                _pfs=${_sink}
             fi
         done
         if [ "$(echo ${_slist}|wc -w)" -eq "1" ] ; then
@@ -235,48 +249,90 @@ __sink () {
 
 __rsink () {
     echo "<REMOTE SINK>" $1 $2 $3
-    local _src_dataset _dst_dataset _dst_host _childrens
-    _src_dataset=$1
-    _dst_dataset=$3
-    _dst_host=$2
-    _childrens="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
+    local _src _dst _remote _children
+    _src=$1
+    _dst=$3
+    _remote=$2
+    _children="$(zfs list -rH -o name ${_src} | grep -Ev "${_src}$|/root$")"
 
-    if [ -z ${_dst_host} ] ; then
+    if [ -z ${_remote} ] ; then
         echo "ERROR: NO HOST SPECIFIED."
         exit 1
     fi
-    if [ -z ${_dst_dataset} ] ; then
-        _dst_dataset=${_src_dataset}
-        echo "WARNING: DESTINATION DATASET NOT SPECIFIED ==> SRC DATASET WILL BE USED: ${_dst_dataset}"
+    if [ -z ${_dst} ] ; then
+        _dst=${_src}
+        echo "WARNING: DESTINATION DATASET NOT SPECIFIED ==> SRC DATASET WILL BE USED: ${_dst}"
     fi
 
     __setenv
 
-    $ZREP init ${_src_dataset} ${_dst_host} ${_dst_dataset} || exit $?
-    $ZREP failover ${_src_dataset} || exit $?
-    for _fs in $(echo ${_childrens}) ; do
-        _dfs=$(echo ${_fs} | sed s#/${_src_dataset}#${_dst_dataset}#g)
-        $ZREP init ${_fs} ${_dst_host} ${_dfs} || exit $?
+    $ZREP init ${_src} ${_remote} ${_dst} || exit $?
+    $ZREP failover ${_src} || exit $?
+    for _fs in $(echo ${_children}) ; do
+        _dfs=$(echo ${_fs} | sed s#/${_src}#${_dst}#g)
+        $ZREP init ${_fs} ${_remote} ${_dfs} || exit $?
         $ZREP failover ${_fs} || exit $?
     done
 
-    __copy_iocage_props_over_ssh ${_src_dataset} ${_dst_host} ${_dst_dataset} || exit $?
+    __copy_iocage_props_over_ssh ${_src} ${_remote} ${_dst} || exit $?
 
-    __set_iocage_remote_hostid ${_dst_host} ${_dst_dataset} || exit $?
+    __set_iocage_remote_hostid ${_remote} ${_dst} || exit $?
 
     echo "SUCCESS!"
 }
 
 
+__failover () {
+    echo "<FAILOVER>" $1 $2 $3 $4
+    local _force _verbose _switch _name _sink _remote _dst _children
+
+    _switch=$1
+    _name=$2
+    _remote=$3
+    _dst=$4
+    _force=""
+    _verbose=""
+    if [ ! -z "${_switch}" -a "${_switch}" == "-f" ] ; then
+        _force="1"
+    elif [ ! -z "${_switch}" -a "${_switch}" == "-v" ] ; then
+        _verbose="1"
+    else
+        # no switch
+        _name=$1
+        _remote=$2
+        _dst=$3
+    fi
+
+    _sink=$(__find ${_name})
+    if [ -z "${_sink}" ] ; then
+        __die "Sink not found for name: ${_name}"
+    fi
+    _children="$(zfs list -rH -o name ${_sink} | grep -Ev "${_sink}$|/root$")"
+    if [ -z ${children} ] ; then
+        echo "WARNING: NO CHILD FS."
+    fi
+
+    __zrep_clear ${_sink} || exit $?
+
+    echo "Begin rsink..."
+    __rsink ${_src} ${_remote} ${_dst} || exit $?
+}
+
+__takeover () {
+    echo "<TAKEOVER>" $1 $2
+
+}
+
+
 __pull () {
     echo "<PULL>" $1 $2
-    local _src_dataset _childrens
-    _src_dataset=$1
-    _childrens="$(zfs list -rH -o name ${_src_dataset} | grep -Ev "${_src_dataset}$|/root$")"
+    local _src _children
+    _src=$1
+    _children="$(zfs list -rH -o name ${_src} | grep -Ev "${_src}$|/root$")"
 
     __setenv
 
-    for _fs in $(echo ${_childrens}) ; do
+    for _fs in $(echo ${_children}) ; do
         $ZREP refresh ${_fs} || exit $?
     done
 
@@ -291,11 +347,11 @@ __push () {
 
 __copy_iocage_props_over_ssh () {
     echo "<COPY_ZFS_PROPS_OVER_SSH>" $1 $2 $2
-    local _src_dataset _dst_dataset _dst_host _zfs_props _zfs_rpc
-    _src_dataset=$1
-    _dst_dataset=$3
-    _dst_host=$2
-    _zfs_props="$(zfs get -H -o property,value all ${_src_dataset} | grep org.freebsd.iocage)"
+    local _src _dst _remote _zfs_props _zfs_rpc
+    _src=$1
+    _dst=$3
+    _remote=$2
+    _zfs_props="$(zfs get -H -o property,value all ${_src} | grep org.freebsd.iocage)"
     _zfs_rpc="$(local _ifs=$IFS
                 IFS=$'\n'
                 for _prop in ${_zfs_props}; do
@@ -306,22 +362,32 @@ __copy_iocage_props_over_ssh () {
                 IFS=$_ifs)"
 
     if [ ! -z "$_zfs_rpc" ] ; then
-        $SSH $_dst_host zfs set ${_zfs_rpc} ${_dst_dataset} || exit $?
+        $SSH $_remote zfs set ${_zfs_rpc} ${_dst} || exit $?
     fi
 }
 
 
 __set_iocage_remote_hostid () {
     echo "<SET_IOCAGE_HOSTID>" $1 $2 $2
-    local _dst_host _dst_dataset _hostid
-    _dst_host=$1
-    _dst_dataset=$2
+    local _remote _dst _hostid
+    _remote=$1
+    _dst=$2
 
-    _hostid="$($SSH $_dst_host cat /etc/hostid || exit $?)"
+    _hostid="$($SSH $_remote cat /etc/hostid || exit $?)"
 
-    $SSH $_dst_host zfs set org.freebsd.iocage:hostid=${_hostid} ${_dst_dataset} || exit $?
+    $SSH $_remote zfs set org.freebsd.iocage:hostid=${_hostid} ${_dst} || exit $?
 }
 
+__zrep_clear () {
+    local _src _children _fs
+    _src=$1
+    _children="$(zfs list -rH -o name ${_src} | grep -Ev "${_src}$|/root$")"
+
+    $ZREP clear ${_src} || exit $?
+    for _fs in $(echo ${_children}) ; do
+        $ZREP clear ${_fs} || exit $?
+    done
+}
 
 __die () {
     echo "  ERROR: $@" >&2
