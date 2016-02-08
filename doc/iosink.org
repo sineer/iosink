@@ -1,0 +1,124 @@
+iosink: The iocage friendly zfs replication manager.
+
+I/O Sink are ZREP destination; read-only ZFS file system(s).
+
+iosink allows one to keep hot copies of local and remote ZFS file systems
+with the ability to do quick failover or cloning of I/O Sink into Jail.
+
+iosink rely on zrep to do super efficient incremental zfs replication.
+
+iosink is iocage friendly because it knows how to replicate iocage(s) jails
+zfs fs including and their children fs that along with the zfs properties.
+
+
+* COMMANDs
+
+*** list
+List all I/O Sink(s)
+with associate iocage tag/uuid if any
+ + LAST SYNC + SPACE + what else?
+
+**** -j Jail type
+
+**** -b Base type
+
+**** -s Sink type
+
+**** -n NO type (all others ZREP FS with children)
+
+*** info <SINK>
+Statistics about Sink (last sync, space, snapshots?, what else??)
+
+*** check <SINK>
+    Examine Sink and report if Remote(s) can be pulled or pushed
+
+*** status [FS|UUID|TAG]
+
+**** -v VERBOSE
+
+
+*** clone <FS|UUID|TAG> [PATH]
+
+
+*** sink <JAIL UUID|TAG OR ZFS/POOL> [ZTAG]
+Sink Local JAIL OR ZPOOL.
+
+**** TODO Multiple Sinks suppport
+Optional ZTAG parameter is to set a "ZREPTAG" for Multiple Sinks support.
+http://www.bolthole.com/solaris/zrep/zrep.documentation.html#multi
+
+*** rsink <REMOTE> <JAIL FS|UUID|TAG> [PATH]
+Sink Remote JAIL or ZFS FS by creating a local Sink.
+
+
+*** failover <REMOTE> <SINK> [PATH]
+(re)Clone Sink and set its origin to new remote.
+
+The destination FS(s) on remote must not exist unless -f (force) option is used.
+
+failover command is often used after one does takeover a sink to change stuff
+then re-sink the jail and want the remote jail to be replaced by newly sunk jail.
+
+NOTE: This call zrep clear on the Sink so ALL ZREP SNAPSHOTS WILL BE LOST!!!
+
+**** TODO Option to force delete remote FS instead of renaming it
+
+*** takeover <SINK> [PATH|UUID|TAG]
+Turn a Sink back into a Jail (AKA "Unsink") or a ZFS FS back to writable FS.
+
+NOTE: This call zrep clear on the Sink so ALL ZREP SNAPSHOTS WILL BE LOST!!!
+
+**** TODO Snapshot prior to takeover by default unless -n option used?
+
+
+*** pull <SINK>
+
+*** push <SINK>
+
+
+*** checkout
+"switch" branch OR if no branch but ZFS snapshot found then clone into a new branch!
+
+*** branch
+
+*** rebase
+ZFS send -R (replication stream) | zfs recv "into current branch"
+
+NOTE: Remotes may use it to mirror sink(s) by pulling incremental ZFS snapshots :-)
+
+*** remote
+**** remote add
+**** remote rm
+
+
+* FEATURES
+** Incremental ZFS replication of jails
+*** Sink jails for incremental replication
+Local jail using iosink sink or remote over ssh using iosink rsink command.
+
+Once sunk, the jails may push to their respective sink. This creates ZFS snapshots
+of the jail file systems and use zrep to replicate these ZFS snapshots into the sink.
+
+iosink can push live jail snapshots incrementally locally or remote over ssh.
+
+iosink can pull the sink to fetch the same jail snapshots locally or remote.
+Like "push" but use zrep refresh command instead of sync to suite backup server.
+
+*** Periodic local or remote ZFS replication
+Replicate jails fs and their children into sink(s) using the iosink pull command
+
+First the jails must be sunk using iosink sink or rsink for remote jails over ssh.
+
+Remote pull requires root access so in this scenario the backup server can setup a
+root periodic cron job and run iosink pull command to backup remote jails.
+
+NOTE: zrep and mbuffer must be installed on local AND remote.
+
+IDEA: New iosink command to remote install zrep+mbuffer on remote.
+
+
+* iosink usage scenarios
+
+** Deploy sink to remote server
+** Periodic remote pull of jails from remote server
+** Failover to do disaster recovery of jails

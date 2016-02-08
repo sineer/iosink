@@ -7,7 +7,8 @@
 ###
 ### https://github.com/sineer/iosink
 ###
-### Copyright Sineer 2015-2016
+### Copyright (c) 2015-2016, Sineer
+###
 
 iocroot="tank/ioc"
 ZREP=/usr/local/sbin/zrep
