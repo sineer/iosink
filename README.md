@@ -1,11 +1,15 @@
-I/O SINK: ZREP for IOCAGE
+iosink: The iocage friendly zfs replication manager.
 
-An iosink is a ZREP destination (read-only zfs filesystem).
+WARNING! STILL ALPHA, NOT PRODUCTION READY! USE AT YOUR OWN RISKS...
 
-iocage pull and push commands use zrep refresh and sync to update the iosink(s).
+I/O Sink are ZREP destination; read-only ZFS file system(s).
 
-** Commands:
+iosink allows one to keep hot copies of local and remote ZFS file systems
+with the ability to do quick failover or cloning of I/O Sink into Jail.
 
-- sink
-- pull
-- push
+iosink rely on zrep to do super efficient incremental zfs replication.
+
+iosink is iocage friendly because it knows how to replicate iocage(s) jails
+zfs fs including and their children fs that along with the zfs properties.
+
+TODO: link to future website with hosted doc and man page.
