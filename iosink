@@ -71,7 +71,7 @@ __find () {
     _slist=""
     _zlist="$(zrep list)"
 
-    for _fs in $(echo ${_zlist}) ; do
+    for _fs in ${_zlist} ; do
         _sinks="${_sinks} ${_fs}"
     done
 
@@ -227,6 +227,7 @@ __info () {
         __die "sink not found for name: ${_name}"
     fi
 
+    __die "INFO - NOT YET IMPLEMENTED"
 }
 
 __status() {
@@ -238,6 +239,7 @@ __status() {
         __die "sink not found for name: ${_name}"
     fi
 
+    __die "STATUS - NOT YET IMPLEMENTED"
 }
 
 
@@ -269,7 +271,7 @@ __rsink () {
     $ZREP init ${_src} ${_remote} ${_dst} || exit $?
     $ZREP failover ${_src} || exit $?
     for _fs in $(echo ${_children}) ; do
-        _dfs=$(echo ${_fs} | sed s#/${_src}#${_dst}#g)
+        _dfs=$(echo ${_fs} | sed s#${_src}#${_dst}#g)
         $ZREP init ${_fs} ${_remote} ${_dfs} || exit $?
         $ZREP failover ${_fs} || exit $?
     done
@@ -303,19 +305,21 @@ __failover () {
         _dst=$3
     fi
 
+    # TODO: if no $_dst and if contains /sinks/ then set _dst=.../jails/...
+
     _sink=$(__find ${_name})
     if [ -z "${_sink}" ] ; then
         __die "Sink not found for name: ${_name}"
     fi
     _children="$(zfs list -rH -o name ${_sink} | grep -Ev "${_sink}$|/root$")"
-    if [ -z ${children} ] ; then
+    if [ -z ${_children} ] ; then
         echo "WARNING: NO CHILD FS."
     fi
 
     __zrep_clear ${_sink} || exit $?
 
     echo "Begin rsink..."
-    __rsink ${_src} ${_remote} ${_dst} || exit $?
+    __rsink ${_sink} ${_remote} ${_dst} || exit $?
 }
 
 __takeover () {
@@ -346,8 +350,14 @@ __push () {
 
 
 __copy_iocage_props_over_ssh () {
-    echo "<COPY_ZFS_PROPS_OVER_SSH>" $1 $2 $2
-    local _src _dst _remote _zfs_props _zfs_rpc
+    #### WARNING: THIS DOES NOT WORK FOR FREEBSD < 11 !
+    ####          Because zfs set cannot take many props.
+    ####
+    #### TODO: Fix this by uploading running a for-loop
+    ####       for each zfs props on $_remote all at once.
+
+    echo "<COPY_ZFS_PROPS_OVER_SSH>" $1 $2 $3
+    local _src _dst _remote _zfs_props _zfs_rpc _cmd
     _src=$1
     _dst=$3
     _remote=$2
@@ -355,14 +365,15 @@ __copy_iocage_props_over_ssh () {
     _zfs_rpc="$(local _ifs=$IFS
                 IFS=$'\n'
                 for _prop in ${_zfs_props}; do
-                    local _name="$(echo $_prop | awk 'BEGIN { FS = "\t" } ; { print $1 }')"
-                    local _prop="$(echo $_prop | awk 'BEGIN { FS = "\t" } ; { print $2 }')"
-                    echo "$_name=\"$_prop\" "
+                    local _name=$(echo $_prop | awk 'BEGIN { FS = "\t" } ; { print $1 }')
+                    local _prop=$(echo $_prop | awk \
+                                   'BEGIN { FS = "\t" } ; { for (i=2; i<=NF; i++) print $i}')
+                    printf "%s" "$_name=\"$_prop\" "
                 done
                 IFS=$_ifs)"
-
     if [ ! -z "$_zfs_rpc" ] ; then
-        $SSH $_remote zfs set ${_zfs_rpc} ${_dst} || exit $?
+        _cmd="zfs set ${_zfs_rpc}"
+        $SSH ${_remote} "${_cmd}" ${_dst} || exit $?
     fi
 }
 
