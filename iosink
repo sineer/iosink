@@ -286,7 +286,7 @@ __rsink () {
 
 __failover () {
     echo "<FAILOVER>" $1 $2 $3 $4
-    local _force _verbose _switch _name _sink _remote _dst _children
+    local _force _verbose _switch _name _sink _remote _dst _children _is_jail
 
     _switch=$1
     _name=$2
@@ -305,8 +305,6 @@ __failover () {
         _dst=$3
     fi
 
-    # TODO: if no $_dst and if contains /sinks/ then set _dst=.../jails/...
-
     _sink=$(__find ${_name})
     if [ -z "${_sink}" ] ; then
         __die "Sink not found for name: ${_name}"
@@ -314,6 +312,13 @@ __failover () {
     _children="$(zfs list -rH -o name ${_sink} | grep -Ev "${_sink}$|/root$")"
     if [ -z ${_children} ] ; then
         echo "WARNING: NO CHILD FS."
+    fi
+
+    if [ -z ${_dst} ] ; then
+        _is_jail=$(echo "${_sink}" | grep "/jails/")
+        if [ -z "${_is_jail}" ] ; then
+            _dst=$(echo "${_sink}" | sed s#/sinks/#/jails/#g)
+        fi
     fi
 
     __zrep_clear ${_sink} || exit $?
