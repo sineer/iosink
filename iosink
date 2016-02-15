@@ -85,7 +85,7 @@ __find () {
             _is_child=$(echo "${_sink}" | grep "${_pfs}")
             if [ -z "${_is_child}" ] ; then
 
-                _found="$(echo ${_sink} | grep -iE "*./${_name}")"
+                _found="$(echo ${_sink} | grep -iE "${_name}")"
                 _tag="$(zfs get -H -o value org.freebsd.iocage:tag ${_sink})"
 
                 if [ "${_tag}" == "${_name}" ] ; then
@@ -320,6 +320,8 @@ __failover () {
             _dst=$(echo "${_sink}" | sed s#/sinks/#/jails/#g)
         fi
     fi
+
+    __setenv
 
     __zrep_clear ${_sink} || exit $?
 
